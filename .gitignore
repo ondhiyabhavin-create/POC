@@ -14,3 +14,5 @@ packages/api/.data/
 *.pdf
 ~$*
 Attachment*.xlsx
+.vercel
+.env*
