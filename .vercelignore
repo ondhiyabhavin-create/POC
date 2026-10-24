@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+packages/api/.data
+infra/cdk.out
+packages/web/dist
+*.docx
+*.doc
+*.zip
+*.pdf
+Attachment*.xlsx
+~$*
+.env
+.env.*

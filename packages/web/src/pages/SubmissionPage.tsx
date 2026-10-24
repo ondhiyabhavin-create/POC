@@ -26,8 +26,8 @@ export function SubmissionPage() {
     setBusy(kind);
     setActionError(undefined);
     try {
-      const { url } = kind === 'report' ? await api.reportUrl(sub.id) : await api.fileUrl(sub.id);
-      downloadFromUrl(url);
+      const res: { url: string; name?: string } = kind === 'report' ? await api.reportUrl(sub.id) : await api.fileUrl(sub.id);
+      downloadFromUrl(res.url, res.name);
     } catch (e) {
       setActionError(e);
     } finally {

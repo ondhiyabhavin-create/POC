@@ -1,4 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { IS_DEMO } from '../api';
+import { resetDemoData } from '../demo-backend';
 import { useAuth } from '../auth';
 
 export const APP_NAME = (import.meta.env.VITE_APP_NAME as string | undefined) ?? 'File Intake';
@@ -9,8 +11,23 @@ export function Layout() {
   const isAdmin = user?.role === 'admin';
   return (
     <>
-      {config?.mode === 'local' && (
-        <div className="env-banner">Local demo environment · synthetic test data only · no cloud services in use</div>
+      {IS_DEMO ? (
+        <div className="env-banner">
+          Browser demo · synthetic test data only · everything you do is stored in this browser only ·{' '}
+          <button
+            className="link-btn"
+            onClick={() => {
+              if (confirm('Reset all demo data (rules, organizations, submissions) in this browser?')) {
+                resetDemoData();
+                location.reload();
+              }
+            }}
+          >
+            Reset demo data
+          </button>
+        </div>
+      ) : (
+        config?.mode === 'local' && <div className="env-banner">Local demo environment · synthetic test data only · no cloud services in use</div>
       )}
       <header className="topbar">
         <div className="topbar-inner">

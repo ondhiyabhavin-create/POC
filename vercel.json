@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm install --no-audit --no-fund",
+  "buildCommand": "VITE_DEMO=1 npm run build -w @odr/web",
+  "outputDirectory": "packages/web/dist",
+  "framework": null,
+  "rewrites": [{ "source": "/((?!assets/|favicon).*)", "destination": "/index.html" }]
+}

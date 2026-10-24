@@ -8,6 +8,8 @@ import type {
   ValidationIssue,
 } from '@odr/shared';
 
+import { demoApi, setDemoTokenSource } from './demo-backend';
+
 const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '';
 const TOKEN_KEY = 'odr.token';
 
@@ -76,7 +78,7 @@ const q = (params: Record<string, string | number | undefined>) => {
   return s ? `?${s}` : '';
 };
 
-export const api = {
+const httpApi = {
   authConfig: () => request<AuthConfig>('GET', '/api/auth/config'),
   localLogin: (email: string, password: string) => request<{ token: string; user: UserIdentity }>('POST', '/api/auth/login', { email, password }),
   me: () => request<UserIdentity>('GET', '/api/me'),
@@ -112,10 +114,16 @@ export const api = {
   },
 };
 
-/** Trigger a browser download from a signed URL. */
-export function downloadFromUrl(url: string) {
+/** Static demo deployments (e.g. Vercel) run the engine in the browser instead of calling an API. */
+export const IS_DEMO = import.meta.env.VITE_DEMO === '1';
+setDemoTokenSource(() => tokenStore.get());
+export const api: typeof httpApi = IS_DEMO ? (demoApi as unknown as typeof httpApi) : httpApi;
+
+/** Trigger a browser download from a signed URL (or a blob URL with a file name). */
+export function downloadFromUrl(url: string, name?: string) {
   const a = document.createElement('a');
   a.href = url;
+  if (name) a.download = name;
   a.rel = 'noopener';
   document.body.appendChild(a);
   a.click();
