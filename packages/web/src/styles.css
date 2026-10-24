@@ -250,3 +250,94 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .import-table tr.excluded td { opacity: 0.45; }
 .example-name { display: inline-block; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
 .link-btn { background: none; border: none; padding: 0; font: inherit; color: inherit; text-decoration: underline; cursor: pointer; }
+
+/* ---------- Template settings ---------- */
+.settings-card { padding: 0; overflow: hidden; }
+.settings-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--border); flex-wrap: wrap; background: linear-gradient(180deg, var(--brand-soft), transparent); }
+.settings-head h2 { margin: 0 0 2px; }
+.settings-head p { margin: 0; }
+.settings-section { padding: 18px 20px; border-bottom: 1px solid var(--border); }
+.settings-section:last-child { border-bottom: none; }
+.settings-section h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 12px; }
+.check-cards { display: flex; gap: 12px; flex-wrap: wrap; }
+.check-card { display: flex; align-items: center; gap: 10px; border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 14px; cursor: pointer; min-width: 200px; transition: border-color 0.15s, background 0.15s, box-shadow 0.15s; }
+.check-card:hover { border-color: #b8c4d4; }
+.check-card.on { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 3px rgba(29, 78, 137, 0.08); }
+.check-card > span:last-child { display: flex; flex-direction: column; }
+.check-card-icon { font-size: 1.4rem; }
+.sub-panel { margin-top: 14px; border: 1px dashed #c5d6ee; border-radius: 10px; padding: 14px; background: #fbfcfe; animation: fade-in 0.18s ease-out; }
+.sub-panel-title { font-weight: 600; font-size: 0.85rem; margin-bottom: 10px; color: var(--brand); }
+.token-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.token { font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem; border: 1px solid var(--border); background: var(--surface-2); border-radius: 6px; padding: 2px 7px; cursor: pointer; color: var(--text); transition: background 0.12s, border-color 0.12s; }
+.token:hover { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
+.field-error { color: var(--err); font-size: 0.8rem; font-weight: 500; }
+.field-warn { color: var(--warn); font-size: 0.8rem; font-weight: 500; }
+.field-ok { color: var(--ok); font-size: 0.8rem; font-weight: 600; }
+.toggle-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px 20px; }
+.toggle-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: background 0.12s; }
+.toggle-row:hover { background: var(--surface-2); }
+.toggle-text { display: flex; flex-direction: column; flex: 1; min-width: 0; font-weight: 500; font-size: 0.9rem; }
+.toggle-text .hint { font-weight: 400; color: var(--muted); font-size: 0.8rem; }
+.switch { position: relative; width: 40px; height: 22px; border-radius: 999px; background: #cbd5e1; flex-shrink: 0; transition: background 0.18s; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch .knob { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); transition: transform 0.18s; }
+.switch.on { background: var(--brand); }
+.switch.on .knob { transform: translateX(18px); }
+.switch:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.toggle-state { width: 26px; font-size: 0.8rem; color: var(--muted); }
+.btn.danger-solid { background: var(--err); border-color: var(--err); color: #fff; }
+.btn.danger-solid:hover { filter: brightness(1.08); }
+@keyframes fade-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.modal { animation: fade-in 0.16s ease-out; }
+
+/* ---------- Text must stay inside its box ---------- */
+.grid > *, .form-grid > *, .row > *, .cond-row > *, .operand > * { min-width: 0; }
+.card, .stat, .alert, .modal, .modal-body, .result-hero > div, .import-kind, .check-card, .toggle-row { min-width: 0; overflow-wrap: anywhere; }
+h1, h2, h3, p, li, dd, .chip, .file-chip, code, .cell-value, .example-name { overflow-wrap: anywhere; word-break: break-word; }
+.page-head > div:first-child { min-width: 0; flex: 1 1 320px; }
+td, th { overflow-wrap: anywhere; }
+th { overflow-wrap: normal; word-break: normal; }
+td.num, th.num, td.mono, .badge, .btn, .token, .seg button, .joiner, .pill { overflow-wrap: normal; word-break: normal; }
+.cell-value { white-space: pre-wrap; display: inline-block; max-width: 100%; }
+.chip { max-width: 100%; flex-wrap: wrap; }
+.file-chip { max-width: 100%; }
+.file-chip > div { min-width: 0; overflow-wrap: anywhere; }
+select { max-width: 100%; text-overflow: ellipsis; }
+input, textarea, select { width: 100%; }
+input[type='checkbox'], input[type='radio'] { width: 16px; }
+.formula-input input { width: auto; }
+.row > input, .row > select, .card-head .row > input, .card-head .row > select { width: auto; }
+.stat .label { overflow-wrap: anywhere; }
+.stat .value { font-size: clamp(1.25rem, 2.2vw, 1.7rem); overflow-wrap: anywhere; }
+.bar-label { min-width: 0; }
+.bar-label > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.bar-label > span:last-child { flex-shrink: 0; white-space: nowrap; }
+.userbox .who { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.userbox .who small { overflow: hidden; text-overflow: ellipsis; }
+.brand span { overflow: hidden; text-overflow: ellipsis; }
+.kv { grid-template-columns: max-content minmax(0, 1fr); }
+.kv dd { min-width: 0; overflow-wrap: anywhere; }
+.result-hero { flex-wrap: wrap; }
+.result-hero > div { flex: 1 1 280px; }
+.timeline li { overflow-wrap: anywhere; }
+.import-table td:nth-child(3) { min-width: 160px; }
+.modal-head h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* Column tables: keep header names readable, let the checks column wrap */
+.cols-table td:nth-child(2) { min-width: 190px; overflow-wrap: normal; word-break: normal; }
+.cols-table td:nth-child(2) .mono { overflow-wrap: anywhere; }
+.cols-table td:nth-child(3) { min-width: 120px; overflow-wrap: normal; }
+.cols-table td:last-child { white-space: nowrap; }
+
+/* Phones: one scrollable row of navigation instead of a tall stack */
+@media (max-width: 860px) {
+  .topbar-inner { gap: 8px 12px; padding: 8px 16px; }
+  .nav { order: 3; flex: 1 1 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav a { white-space: nowrap; padding: 6px 10px; }
+  .nav .sep { display: none; }
+  .userbox { margin-left: auto; }
+  .page-head > .row { width: 100%; }
+  .settings-head .row { width: 100%; }
+  .settings-head .row .btn { flex: 1 1 auto; justify-content: center; }
+}

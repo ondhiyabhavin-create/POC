@@ -347,6 +347,71 @@ describe('import', () => {
   });
 });
 
+describe('template settings', () => {
+  const base = { ...RECALL, fileRules: RECALL.fileRules.filter((r) => r.type !== 'existsInPrior') };
+  const recs = recallRecords(org, placementRecords(org, 4, 2), reasons);
+  const csvOf = (def: FileTypeDefinition, sep = ',', eol = '\r\n') => recordsToCsv(def, recs).replace(/,/g, sep).replace(/\r\n/g, eol);
+  const run = (def: FileTypeDefinition, text: string | Uint8Array, fileName = 'CCSV_REC_20261024.csv') =>
+    validateBytes(typeof text === 'string' ? new TextEncoder().encode(text) : text, ctx(def, { fileName }));
+
+  it('custom delimiter, and a helpful error for the wrong one', () => {
+    const semi = { ...base, csv: { delimiter: ';', encoding: 'utf-8' as const, quote: '"' as const, lineEnding: 'any' as const } };
+    expect(run(semi, csvOf(base, ';')).issues).toEqual([]);
+    expect(run(base, csvOf(base, ';')).issues[0].message).toContain('appears to be separated by semicolon');
+  });
+
+  it('line endings and BOM / encoding', () => {
+    const crlf = { ...base, csv: { delimiter: ',', encoding: 'utf-8-bom' as const, quote: '"' as const, lineEnding: 'crlf' as const } };
+    const msgs = run(crlf, csvOf(base, ',', '\n')).issues.map((i) => i.message).join(' ');
+    expect(msgs).toContain('Windows line endings');
+    expect(msgs).toContain('UTF-8 with BOM');
+    expect(run(base, new Uint8Array([...new TextEncoder().encode('Agency Name\n'), 0xff, 0xfe, 0x41])).issues[0].message).toContain('not valid UTF-8');
+  });
+
+  it('header row, data start row and record limits', () => {
+    const def = { ...base, headerRow: 3, dataStartRow: 5, minRecords: 1, maxRecords: 3 };
+    const lines = csvOf(base).split('\r\n');
+    const text = ['Report title', '', lines[0], 'units row (ignored)', ...lines.slice(1)].join('\r\n');
+    const res = run(def, text);
+    expect(res.issues.map((i) => i.message)).toEqual(['The file has 4 records but no more than 3 are allowed.']);
+    expect(run({ ...def, maxRecords: undefined, minRecords: 5 }, text).issues[0].message).toContain('at least 5 are required');
+  });
+
+  it('columns in any order are matched by header name and reported with the real letter', () => {
+    const rows = parseCsv(csvOf(base)).rows.map((r) => [r[1], r[0], ...r.slice(2)]);
+    rows[2][0] = '';
+    const text = rows.map((r) => r.join(',')).join('\r\n');
+    expect(run(base, text).summary.structuralFailure).toBe(true);
+    const res = run({ ...base, enforceColumnOrder: false }, text);
+    expect(res.issues).toHaveLength(1);
+    expect(res.issues[0]).toMatchObject({ row: 3, column: 'A', field: 'Agency Debt ID' });
+  });
+
+  it('accepted formats and file name tokens', () => {
+    const xlsxOnly = run({ ...base, formats: { csv: false, xlsx: true } }, csvOf(base)).issues.map((i) => i.message).join(' ');
+    expect(xlsxOnly).toContain('CSV files are not accepted');
+    expect(xlsxOnly).toContain('CCSV_REC_YYYYMMDD.xlsx.');
+    const named = { ...base, fileNamePattern: '{XXXXXX}-{YYMMDD}.csv' };
+    expect(run(named, csvOf(base), 'ABC123-261024.csv').issues).toEqual([]);
+    expect(run(named, csvOf(base), 'ABC123-261024.xlsx').issues).toEqual([]); // name is checked; content is detected from the bytes
+    expect(run(named, csvOf(base), 'ABC12-261024.csv').issues[0].category).toBe('File Name');
+    expect(run(named, csvOf(base), 'ABC123-261399.csv').issues[0].message).toContain('YYMMDD');
+  });
+
+  it('masks SSN/FEIN in messages when enabled', () => {
+    const rows = recallRecords(org, placementRecords(org, 2, 2), reasons);
+    Object.assign(rows[0], { debtorType: 'I', ssn: '12345678', lastName: 'X', firstName: 'Y' });
+    const res = validateFile(recordsToCsv(RECALL, rows), ctx({ ...base, maskSensitive: true }));
+    expect(res.issues[0].value).toBe('****5678');
+    expect(res.issues[0].message).not.toContain('12345678');
+  });
+
+  it('rejects impossible settings', () => {
+    const p = checkFileTypeDefinition({ ...base, formats: { csv: false, xlsx: false }, minRecords: 0, maxRecords: -1, headerRow: 2, dataStartRow: 2 }, LOOKUPS);
+    expect(p.join(' ')).toMatch(/at least one file format.*at least 1.*less than the minimum.*after the header row/);
+  });
+});
+
 describe('definitions', () => {
   it('seed definitions are internally consistent', () => {
     for (const def of [PLACEMENT, RECALL, ADJUSTMENT, DIRECT_PAYMENT]) expect(checkFileTypeDefinition(def, LOOKUPS, ['PLC', 'REC', 'ADJ', 'DPF'])).toEqual([]);

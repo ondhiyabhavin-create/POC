@@ -13,9 +13,27 @@ export function checkFileTypeDefinition(def: FileTypeDefinition, lookups: Lookup
   if (!def.name.trim()) problems.push('File type name is required.');
   if (def.columns.length === 0) problems.push('At least one column is required.');
   if (def.fileNamePattern !== undefined && def.fileNamePattern.trim() === '') problems.push('File name pattern cannot be empty (remove the file name rule instead).');
-  if (def.fileNamePattern && /\{(?!ORG\}|TYPE\}|YYYYMMDD\}|ANY\})[^}]*\}/.test(def.fileNamePattern)) {
-    problems.push('File name pattern can only use the tokens {ORG}, {TYPE}, {YYYYMMDD} and {ANY}.');
+  if (def.fileNamePattern && /\{(?!ORG\}|TYPE\}|YYYYMMDD\}|YYMMDD\}|MMDDYYYY\}|ANY\}|X+\}|#+\})[^}]*\}/i.test(def.fileNamePattern)) {
+    problems.push('File name pattern can only use the tokens {ORG}, {TYPE}, {YYYYMMDD}, {YYMMDD}, {MMDDYYYY}, {XXXX}, {####} and {ANY}.');
   }
+
+  // Template settings
+  const formats = def.formats ?? { csv: true, xlsx: true };
+  if (!formats.csv && !formats.xlsx) problems.push('Allow at least one file format (CSV or Excel).');
+  if (formats.csv && def.csv) {
+    const d = def.csv.delimiter === '\\t' ? '\t' : def.csv.delimiter;
+    if (!d || d.length !== 1) problems.push('CSV delimiter must be a single character (use \\t for tab).');
+    if (d === '"' || d === "'" || d === '\n' || d === '\r') problems.push('CSV delimiter cannot be a quote or line break.');
+    if (def.csv.quote !== 'none' && d === def.csv.quote) problems.push('CSV delimiter and quote character must be different.');
+  }
+  const isInt = (v: unknown) => Number.isInteger(v);
+  const min = def.minRecords ?? 1;
+  if (!isInt(min) || min < 1) problems.push('Minimum number of records must be a whole number of at least 1.');
+  if (def.maxRecords !== undefined && (!isInt(def.maxRecords) || def.maxRecords < min)) problems.push('Maximum number of records cannot be less than the minimum (leave blank for no limit).');
+  const headerRow = def.headerRow ?? 1;
+  if (!isInt(headerRow) || headerRow < 1) problems.push('Header row number must be a whole number of at least 1.');
+  const start = def.dataStartRow ?? headerRow + 1;
+  if (!isInt(start) || start <= headerRow) problems.push('Records must start on a row after the header row.');
 
   const keys = new Set<string>();
   def.columns.forEach((c, i) => {

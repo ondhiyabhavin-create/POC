@@ -1,8 +1,10 @@
 import { ConditionEngine } from './conditions';
-import { columnLetter, isBlankRow, parseCsv } from './csv';
+import { DELIMITER_LABEL, columnLetter, detectDelimiter, isBlankRow, parseCsv } from './csv';
 import { isIsoDate, safeRegex } from './expression';
+import { DEFAULT_CSV_OPTIONS } from './types';
 import type {
   ColumnCheck,
+  CsvOptions,
   ColumnDefinition,
   Condition,
   FileRule,
@@ -28,65 +30,144 @@ function displayValue(v: string): string {
   return v === '' ? '(blank)' : `"${v}"`;
 }
 
-/** Rows to validate, with their physical line numbers (header = first row). */
+/** Rows to validate, with their physical line numbers. */
 export interface DataTable {
   rows: string[][];
+  /** Row number shown to users for each entry (CSV: record number; Excel: sheet row number). */
   lineNumbers: number[];
   parseErrors?: { line: number; message: string }[];
+  /** File-level format problems (encoding, line endings…) found while reading. */
+  formatIssues?: { severity: Severity; message: string }[];
   /** Excel files drop empty trailing cells; pad short rows to the header width. */
   padRows?: boolean;
   sheetName?: string;
+  format?: 'csv' | 'xlsx';
 }
 
-export function tableFromCsv(text: string): DataTable {
-  const p = parseCsv(text);
-  return { rows: p.rows, lineNumbers: p.lineNumbers, parseErrors: p.errors };
+const csvOpts = (def?: Pick<FileTypeDefinition, 'csv'>): CsvOptions => ({ ...DEFAULT_CSV_OPTIONS, ...(def?.csv ?? {}) });
+
+export function tableFromCsv(text: string, def?: Pick<FileTypeDefinition, 'csv'>): DataTable {
+  const o = csvOpts(def);
+  const p = parseCsv(text, { delimiter: o.delimiter, quote: o.quote });
+  const formatIssues: DataTable['formatIssues'] = [];
+  const le = p.lineEndings;
+  if (o.lineEnding === 'crlf' && (le.lf > 0 || le.cr > 0)) formatIssues.push({ severity: 'error', message: `Lines must end with Windows line endings (CRLF), but ${le.lf + le.cr} line(s) use Unix/Mac endings (LF).` });
+  if (o.lineEnding === 'lf' && le.crlf > 0) formatIssues.push({ severity: 'error', message: `Lines must end with Unix line endings (LF), but ${le.crlf} line(s) use Windows endings (CRLF).` });
+  if (o.encoding === 'utf-8-bom' && !p.hadBom) formatIssues.push({ severity: 'error', message: 'The file must be saved as "UTF-8 with BOM" (byte order mark missing).' });
+  if (o.encoding === 'utf-8-no-bom' && p.hadBom) formatIssues.push({ severity: 'error', message: 'The file must be saved as UTF-8 without a BOM (byte order mark found). In Excel choose "CSV (Comma delimited)" rather than "CSV UTF-8".' });
+  // Wrong delimiter: header splits into one field but another delimiter would split it.
+  if (p.rows[0]?.length === 1) {
+    const guess = detectDelimiter(text);
+    const d = o.delimiter === '\\t' ? '\t' : o.delimiter;
+    if (guess !== d && text.split(/\r?\n/, 1)[0].includes(guess)) {
+      formatIssues.push({ severity: 'error', message: `The file appears to be separated by ${DELIMITER_LABEL[guess] ?? `"${guess}"`}, but this file type expects ${DELIMITER_LABEL[d] ?? `"${d}"`}.` });
+    }
+  }
+  return { rows: p.rows, lineNumbers: p.rows.map((_, i) => i + 1), parseErrors: p.errors.map((e) => ({ line: p.lineNumbers.findIndex((l) => l >= e.line) + 1 || e.line, message: e.message })), formatIssues, format: 'csv' };
 }
 
-/** Pick the sheet whose first row best matches the expected headers. */
-export function tableFromXlsx(bytes: Uint8Array, def: Pick<FileTypeDefinition, 'columns'>): DataTable {
+/** Pick the sheet whose header row best matches the expected headers. */
+export function tableFromXlsx(bytes: Uint8Array, def: Pick<FileTypeDefinition, 'columns' | 'headerRow'>): DataTable {
   const sheets = readXlsx(bytes).filter((s) => s.rows.length > 0);
-  if (sheets.length === 0) return { rows: [], lineNumbers: [], padRows: true };
+  if (sheets.length === 0) return { rows: [], lineNumbers: [], padRows: true, format: 'xlsx' };
   const expected = new Set(def.columns.map((c) => normalizeHeader(c.header)));
-  const score = (s: XlsxSheet) => s.rows[0].filter((h) => expected.has(normalizeHeader(h))).length;
+  const hr = def.headerRow ?? 1;
+  const headerOf = (s: XlsxSheet) => s.rows[s.rowNumbers.indexOf(hr)] ?? s.rows[0];
+  const score = (s: XlsxSheet) => headerOf(s).filter((h) => expected.has(normalizeHeader(h))).length;
   const best = [...sheets].sort((a, b) => score(b) - score(a))[0];
-  return { rows: best.rows, lineNumbers: best.rowNumbers, padRows: true, sheetName: best.name };
+  return { rows: best.rows, lineNumbers: best.rowNumbers, padRows: true, sheetName: best.name, format: 'xlsx' };
 }
 
-export function fileNameRegex(pattern: string, typeId: string, orgCode?: string): RegExp {
-  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Decode CSV bytes according to the file type's encoding setting. */
+export function decodeCsv(bytes: Uint8Array, def?: Pick<FileTypeDefinition, 'csv'>): { text: string; error?: string } {
+  const o = csvOpts(def);
+  if (o.encoding === 'windows-1252') return { text: new TextDecoder('windows-1252').decode(bytes) };
+  try {
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) };
+  } catch {
+    return {
+      text: new TextDecoder('windows-1252').decode(bytes),
+      error: 'The file is not valid UTF-8 text. It may have been saved with a different encoding (e.g. ANSI/Windows-1252). Re-save it as "CSV UTF-8".',
+    };
+  }
+}
+
+const TOKEN_HELP: Record<string, string> = { YYYYMMDD: 'YYYYMMDD', YYMMDD: 'YYMMDD', MMDDYYYY: 'MMDDYYYY' };
+
+/** Build the file-name regex; `extensions` replaces the pattern's own extension when given. */
+export function fileNameRegex(pattern: string, typeId: string, orgCode?: string, extensions?: string[]): RegExp {
+  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let body = pattern;
+  let ext = '';
+  const m = /\.(csv|xlsx|txt)$/i.exec(body);
+  if (m) {
+    body = body.slice(0, -m[0].length);
+    ext = m[1].toLowerCase();
+  }
+  const exts = extensions?.length ? extensions : ext ? (ext === 'csv' ? ['csv', 'xlsx'] : [ext]) : [];
   let src = '';
-  for (const part of pattern.split(/(\{[A-Z]+\})/)) {
-    if (part === '{ORG}') src += orgCode ? `(?<org>${esc(orgCode)})` : '(?<org>[A-Za-z0-9]+)';
-    else if (part === '{TYPE}') src += `(?<type>${esc(typeId)})`;
-    else if (part === '{YYYYMMDD}') src += '(?<date>\\d{8})';
-    else if (part === '{ANY}') src += '.+?';
+  for (const part of body.split(/(\{[A-Za-z#]+\})/)) {
+    const t = /^\{([A-Za-z#]+)\}$/.exec(part)?.[1];
+    if (!t) src += esc(part);
+    else if (t === 'ORG') src += orgCode ? `(?<org>${esc(orgCode)})` : '(?<org>[A-Za-z0-9]+)';
+    else if (t === 'TYPE') src += `(?<type>${esc(typeId)})`;
+    else if (t === 'YYYYMMDD' || t === 'MMDDYYYY') src += `(?<${t === 'YYYYMMDD' ? 'date' : 'mdy'}>\\d{8})`;
+    else if (t === 'YYMMDD') src += '(?<ymd6>\\d{6})';
+    else if (t === 'ANY') src += '.+?';
+    else if (/^X+$/i.test(t)) src += `[A-Za-z0-9]{${t.length}}`;
+    else if (/^#+$/.test(t)) src += `\\d{${t.length}}`;
     else src += esc(part);
   }
-  src = src.replace(/\\\.csv$/i, '\\.(?:csv|xlsx)');
+  if (exts.length) src += `\\.(?:${exts.map(esc).join('|')})`;
   return new RegExp(`^${src}$`, 'i');
+}
+
+export function describeFileName(pattern: string, typeId: string, orgCode?: string, exts?: string[]): string {
+  const p = exts?.length ? `${pattern.replace(/\.(csv|xlsx|txt)$/i, '')}.${exts.join(' or .')}` : pattern;
+  return p
+    .replace('{ORG}', orgCode ?? 'ORG')
+    .replace('{TYPE}', typeId)
+    .replace(/\{(YYYYMMDD|YYMMDD|MMDDYYYY)\}/g, (_, t: string) => TOKEN_HELP[t])
+    .replace('{ANY}', '…');
 }
 
 function isValidYyyymmdd(v: string): boolean {
   return /^\d{8}$/.test(v) && isIsoDate(`${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`);
 }
 
+const SENSITIVE_RE = /\b(ssn|fein|ein|tin|itin|social\s*security|tax\s*id)\b/i;
+export const isSensitiveColumn = (c: Pick<ColumnDefinition, 'sensitive' | 'key' | 'header'>) =>
+  c.sensitive ?? (SENSITIVE_RE.test(c.header) || /^(ssn|fein|ein|tin|itin)$/i.test(c.key));
+export const maskValue = (v: string) => {
+  const t = v.trim();
+  if (t.length <= 4) return '*'.repeat(t.length || 4);
+  return `${'*'.repeat(t.length - 4)}${t.slice(-4)}`;
+};
+
 /** Validate CSV text. */
 export function validateFile(csvText: string, ctx: ValidationContext): ValidationResult {
-  return validateTable(tableFromCsv(csvText), ctx);
+  return validateTable(tableFromCsv(csvText, ctx.fileType), ctx);
 }
 
 /** Validate an uploaded file (CSV or XLSX, detected from the bytes). */
 export function validateBytes(bytes: Uint8Array, ctx: ValidationContext): ValidationResult {
   const isZip = bytes.length > 4 && bytes[0] === 0x50 && bytes[1] === 0x4b;
+  const formats = ctx.fileType.formats ?? { csv: true, xlsx: true };
+  const reject = (message: string) => validateTable({ rows: [], lineNumbers: [], formatIssues: [{ severity: 'error', message }] }, ctx);
   if (isZip) {
+    if (!formats.xlsx) return reject(`Excel files are not accepted for ${ctx.fileType.name}. Save the file as CSV and try again.`);
     try {
       return validateTable(tableFromXlsx(bytes, ctx.fileType), ctx);
     } catch (e) {
-      return validateTable({ rows: [], lineNumbers: [], parseErrors: [{ line: 1, message: (e as Error).message }] }, ctx);
+      return reject((e as Error).message);
     }
   }
-  return validateFile(new TextDecoder('utf-8').decode(bytes), ctx);
+  if (bytes.length > 8 && bytes[0] === 0xd0 && bytes[1] === 0xcf) return reject('Old Excel 97-2003 (.xls) files are not supported. Save the file as .xlsx or .csv.');
+  if (!formats.csv) return reject(`CSV files are not accepted for ${ctx.fileType.name}. Upload an Excel (.xlsx) file.`);
+  const { text, error } = decodeCsv(bytes, ctx.fileType);
+  const table = tableFromCsv(text, ctx.fileType);
+  if (error) table.formatIssues = [{ severity: 'error', message: error }, ...(table.formatIssues ?? [])];
+  return validateTable(table, ctx);
 }
 
 /**
@@ -102,39 +183,54 @@ export function validateTable(table: DataTable, ctx: ValidationContext): Validat
   const issues: ValidationIssue[] = [];
   const add = (issue: ValidationIssue) => issues.push(issue);
   const cellLabel = (row: number, col: ColumnDefinition) => `Row ${row}, Column ${col.letter} (${col.header})`;
+  const formats = fileType.formats ?? { csv: true, xlsx: true };
+  const exts = [formats.csv && 'csv', formats.xlsx && 'xlsx'].filter(Boolean) as string[];
 
   // ---------- File name ----------
   for (const rule of fileType.fileRules) {
     if (rule.type !== 'fileName') continue;
     const pattern = fileType.fileNamePattern || DEFAULT_FILE_NAME_PATTERN;
-    const expected = pattern.replace('{ORG}', organization?.code ?? 'ORG').replace('{TYPE}', fileType.id).replace('{YYYYMMDD}', 'YYYYMMDD').replace('{ANY}', '…');
-    const m = fileNameRegex(pattern, fileType.id, organization?.code).exec(ctx.fileName);
+    const expected = describeFileName(pattern, fileType.id, organization?.code, exts);
+    const m = fileNameRegex(pattern, fileType.id, organization?.code, exts).exec(ctx.fileName);
     let problem: string | undefined;
     if (!m) {
-      const loose = fileNameRegex(pattern, fileType.id).exec(ctx.fileName);
+      const loose = fileNameRegex(pattern, fileType.id, undefined, exts).exec(ctx.fileName);
       problem =
         loose && organization && pattern.includes('{ORG}')
           ? `File name must start with your organization code "${organization.code}" (found "${loose.groups?.org}"). Expected ${expected}.`
           : `File name "${ctx.fileName}" does not follow the naming convention ${expected}.`;
     } else if (m.groups?.date && !isValidYyyymmdd(m.groups.date)) {
       problem = `File name date "${m.groups.date}" is not a valid date in YYYYMMDD format.`;
+    } else if (m.groups?.ymd6 && !isValidYyyymmdd(`20${m.groups.ymd6}`)) {
+      problem = `File name date "${m.groups.ymd6}" is not a valid date in YYMMDD format.`;
+    } else if (m.groups?.mdy && !isValidYyyymmdd(`${m.groups.mdy.slice(4)}${m.groups.mdy.slice(0, 4)}`)) {
+      problem = `File name date "${m.groups.mdy}" is not a valid date in MMDDYYYY format.`;
     }
     if (problem) add({ severity: rule.severity, ruleId: rule.id, category: 'File Name', message: problem, value: ctx.fileName });
   }
 
+  for (const f of table.formatIssues ?? []) add({ severity: f.severity, ruleId: 'structure.format', category: 'Structure', message: f.message });
   for (const e of table.parseErrors ?? []) {
     add({ severity: 'error', ruleId: 'structure.parse', category: 'Structure', row: e.line, message: `Row ${e.line}: ${e.message}` });
   }
 
-  let structuralFailure = (table.parseErrors ?? []).length > 0;
+  let structuralFailure = (table.parseErrors ?? []).length > 0 || (table.formatIssues ?? []).some((f) => f.severity === 'error');
+  let displayCols = columns;
   const finish = (dataRowCount: number, rowsWithErrors: Set<number>, rowsWithWarnings: Set<number>) =>
-    buildResult(issues, dataRowCount, rowsWithErrors, rowsWithWarnings, structuralFailure, started, columns);
+    buildResult(maskIssues(issues, fileType, displayCols), dataRowCount, rowsWithErrors, rowsWithWarnings, structuralFailure, started, displayCols);
 
-  if (table.rows.length === 0) {
-    if (!structuralFailure) add({ severity: 'error', ruleId: 'structure.empty', category: 'Structure', message: 'The file is empty. Row 1 must contain the column headers.' });
+  // ---------- Header / data rows ----------
+  const headerRowNo = fileType.headerRow ?? 1;
+  const dataStart = fileType.dataStartRow ?? headerRowNo + 1;
+  const headerIdx = table.lineNumbers.indexOf(headerRowNo);
+
+  if (table.rows.length === 0 || headerIdx < 0) {
+    if (table.rows.length === 0 && !structuralFailure) add({ severity: 'error', ruleId: 'structure.empty', category: 'Structure', message: `The file is empty. Row ${headerRowNo} must contain the column headers.` });
+    else if (table.rows.length > 0) add({ severity: 'error', ruleId: 'structure.noHeader', category: 'Structure', row: headerRowNo, message: `Row ${headerRowNo} must contain the column headers, but it is empty or missing${table.sheetName ? ` in sheet "${table.sheetName}"` : ''}.` });
     structuralFailure = true;
     return finish(0, new Set(), new Set());
   }
+  const dataPairs = table.rows.map((r, i) => ({ r, line: table.lineNumbers[i] })).filter((x) => x.line >= dataStart);
 
   // Configuration problems (bad formulas etc.) are reported once, not per row.
   const brokenRules = new Set<string>();
@@ -147,45 +243,59 @@ export function validateTable(table: DataTable, ctx: ValidationContext): Validat
     }
   }
 
-  // ---------- Header ----------
-  const header = [...table.rows[0]];
+  const header = [...table.rows[headerIdx]];
   if (table.padRows) while (header.length > columns.length && header[header.length - 1].trim() === '') header.pop();
   const headerEq = (found: string, expected: string) =>
     fileType.headerMatch === 'strict' ? found.trim() === expected : normalizeHeader(found) === normalizeHeader(expected);
   const sheetNote = table.sheetName ? ` (sheet "${table.sheetName}")` : '';
+  const ordered = fileType.enforceColumnOrder !== false;
+  /** For each defined column, its position in the file (when order is not enforced). */
+  let mapping: number[] | undefined;
+  let headerOk = true;
 
-  if (header.length !== columns.length) {
-    structuralFailure = true;
+  if (!ordered) {
+    const used = new Set<number>();
+    mapping = columns.map((col) => {
+      const at = header.findIndex((h, i) => !used.has(i) && headerEq(h, col.header));
+      if (at >= 0) used.add(at);
+      return at;
+    });
+    columns.forEach((col, i) => {
+      if (mapping![i] < 0) {
+        headerOk = false;
+        add({ severity: 'error', ruleId: 'structure.missingColumn', category: 'Structure', row: headerRowNo, field: col.header, message: `Row ${headerRowNo}${sheetNote}: required column "${col.header}" is missing. Columns may be in any order, but every column must be present.` });
+      }
+    });
+    header.forEach((h, i) => {
+      if (!used.has(i) && h.trim() !== '') {
+        headerOk = false;
+        add({ severity: 'error', ruleId: 'structure.unexpectedColumn', category: 'Structure', row: headerRowNo, column: columnLetter(i), value: h, message: `Row ${headerRowNo}, Column ${columnLetter(i)}: unexpected column ${displayValue(h)} is not part of the ${fileType.name} layout.` });
+      }
+    });
+    if (headerOk) displayCols = columns.map((c, i) => ({ ...c, letter: columnLetter(mapping![i]) }));
+  } else if (header.length !== columns.length) {
+    headerOk = false;
     const missing = columns.length - header.length;
     add({
       severity: 'error',
       ruleId: 'structure.columnCount',
       category: 'Structure',
-      row: table.lineNumbers[0],
+      row: headerRowNo,
       message:
-        `Header row${sheetNote} has ${header.length} columns but the ${fileType.name} layout requires exactly ${columns.length} ` +
+        `Header row ${headerRowNo}${sheetNote} has ${header.length} columns but the ${fileType.name} layout requires exactly ${columns.length} ` +
         `(columns A through ${columns[columns.length - 1]?.letter ?? 'A'}). ` +
         (missing > 0 ? `${missing} column(s) appear to be missing or deleted.` : `${-missing} extra column(s) were found.`) +
         ' Row-level validation was skipped until the layout is corrected.',
     });
-    // Positions are shifted, so name the missing / unexpected headers.
     const remaining = [...header];
     for (const col of columns) {
       const at = remaining.findIndex((h) => headerEq(h, col.header));
       if (at >= 0) remaining.splice(at, 1);
       else
-        add({
-          severity: 'error',
-          ruleId: 'structure.missingColumn',
-          category: 'Structure',
-          row: table.lineNumbers[0],
-          column: col.letter,
-          field: col.header,
-          message: `Row ${table.lineNumbers[0]}: required column ${col.letter} "${col.header}" is missing. All columns must be present even when the value is blank.`,
-        });
+        add({ severity: 'error', ruleId: 'structure.missingColumn', category: 'Structure', row: headerRowNo, column: col.letter, field: col.header, message: `Row ${headerRowNo}: required column ${col.letter} "${col.header}" is missing. All columns must be present even when the value is blank.` });
     }
     for (const extra of remaining.filter((h) => h.trim() !== '')) {
-      add({ severity: 'error', ruleId: 'structure.unexpectedColumn', category: 'Structure', row: table.lineNumbers[0], value: extra, message: `Row ${table.lineNumbers[0]}: unexpected column ${displayValue(extra)} is not part of the ${fileType.name} layout.` });
+      add({ severity: 'error', ruleId: 'structure.unexpectedColumn', category: 'Structure', row: headerRowNo, value: extra, message: `Row ${headerRowNo}: unexpected column ${displayValue(extra)} is not part of the ${fileType.name} layout.` });
     }
   } else {
     columns.forEach((col, i) => {
@@ -195,31 +305,37 @@ export function validateTable(table: DataTable, ctx: ValidationContext): Validat
           severity: 'error',
           ruleId: 'structure.header',
           category: 'Structure',
-          row: table.lineNumbers[0],
+          row: headerRowNo,
           column: col.letter,
           field: col.header,
           value: header[i],
-          message: `Row ${table.lineNumbers[0]}, Column ${col.letter}: header should be "${col.header}". Current value: ${displayValue(header[i])}. Columns must not be renamed, rearranged, hidden or deleted.`,
+          message: `Row ${headerRowNo}, Column ${col.letter}: header should be "${col.header}". Current value: ${displayValue(header[i])}. Columns must be in this exact order and must not be renamed, hidden or deleted.`,
         });
       }
     });
   }
+  if (!headerOk) structuralFailure = true;
 
-  const dataRows = table.rows.slice(1);
-  const dataLines = table.lineNumbers.slice(1);
   const rowsWithErrors = new Set<number>();
   const rowsWithWarnings = new Set<number>();
-  let dataRowCount = 0;
+  const nonBlank = dataPairs.filter((x) => !isBlankRow(x.r)).length;
 
+  // ---------- Record count ----------
+  const min = Math.max(1, fileType.minRecords ?? 1);
+  const max = fileType.maxRecords;
   const notEmptyRule = fileType.fileRules.find((r) => r.type === 'notEmpty');
-  if (notEmptyRule && dataRows.filter((r) => !isBlankRow(r)).length === 0) {
-    add({ severity: notEmptyRule.severity, ruleId: notEmptyRule.id, category: 'Structure', message: 'The file contains a header row but no data records.' });
+  if (nonBlank < min) {
+    add({
+      severity: notEmptyRule?.severity ?? 'error',
+      ruleId: 'structure.recordCount',
+      category: 'Structure',
+      message: nonBlank === 0 ? `The file contains no data records (data must start on row ${dataStart}).` : `The file has ${nonBlank} record(s) but at least ${min} are required.`,
+    });
+  } else if (max !== undefined && nonBlank > max) {
+    add({ severity: 'error', ruleId: 'structure.recordCount', category: 'Structure', message: `The file has ${nonBlank} records but no more than ${max} are allowed.` });
   }
 
-  if (header.length !== columns.length) {
-    dataRowCount = dataRows.filter((r) => !isBlankRow(r)).length;
-    return finish(dataRowCount, rowsWithErrors, rowsWithWarnings);
-  }
+  if (!headerOk) return finish(nonBlank, rowsWithErrors, rowsWithWarnings);
 
   const track = (issue: ValidationIssue) => {
     add(issue);
@@ -227,44 +343,53 @@ export function validateTable(table: DataTable, ctx: ValidationContext): Validat
   };
 
   const validRows: { line: number; values: string[] }[] = [];
+  const width = mapping ? header.length : columns.length;
+  let dataRowCount = 0;
 
-  for (let r = 0; r < dataRows.length; r++) {
-    let values = dataRows[r];
-    const line = dataLines[r];
+  for (const { r: rowValues, line } of dataPairs) {
+    let values = rowValues;
     if (isBlankRow(values)) {
       track({ severity: 'warning', ruleId: 'structure.blankRow', category: 'Structure', row: line, message: `Row ${line}: blank row will be ignored. Remove empty rows from the file.` });
       continue;
     }
     dataRowCount++;
-    if (table.padRows && values.length < columns.length) values = [...values, ...Array(columns.length - values.length).fill('')];
-    if (table.padRows && values.length > columns.length && values.slice(columns.length).every((v) => v.trim() === '')) values = values.slice(0, columns.length);
-    if (values.length !== columns.length) {
-      track({
-        severity: 'error',
-        ruleId: 'structure.rowColumnCount',
-        category: 'Structure',
-        row: line,
-        message: `Row ${line}: has ${values.length} values but ${columns.length} are required. Check for extra or missing commas.`,
-      });
+    if (table.padRows && values.length < width) values = [...values, ...Array(width - values.length).fill('')];
+    if (table.padRows && values.length > width && values.slice(width).every((v) => v.trim() === '')) values = values.slice(0, width);
+    if (values.length !== width) {
+      track({ severity: 'error', ruleId: 'structure.rowColumnCount', category: 'Structure', row: line, message: `Row ${line}: has ${values.length} values but ${width} are required. Check for extra or missing separators.` });
       continue;
     }
+    if (mapping) values = mapping.map((i) => values[i]);
     validRows.push({ line, values });
 
     for (let c = 0; c < columns.length; c++) {
-      const issue = checkCell(columns[c], values[c], line, ctx, cellLabel);
+      const issue = checkCell(displayCols[c], values[c], line, ctx, cellLabel);
       if (issue) track(issue);
     }
     for (const rule of fileType.rowRules) {
       if (brokenRules.has(rule.id)) continue;
-      for (const issue of evaluateRowRule(rule, values, line, columns, colIndex, engine, cellLabel)) track(issue);
+      for (const issue of evaluateRowRule(rule, values, line, displayCols, colIndex, engine, cellLabel)) track(issue);
     }
   }
 
   for (const rule of fileType.fileRules) {
-    for (const issue of evaluateFileRule(rule, validRows, columns, colIndex, ctx)) track(issue);
+    for (const issue of evaluateFileRule(rule, validRows, displayCols, colIndex, ctx)) track(issue);
   }
 
   return finish(dataRowCount, rowsWithErrors, rowsWithWarnings);
+}
+
+/** Replace sensitive values in issues with masked versions when the file type asks for it. */
+function maskIssues(issues: ValidationIssue[], def: FileTypeDefinition, cols: ColumnDefinition[]): ValidationIssue[] {
+  if (!def.maskSensitive) return issues;
+  const sensitive = new Set(cols.filter(isSensitiveColumn).map((c) => c.letter));
+  return issues.map((i) => {
+    if (!i.column || !sensitive.has(i.column) || !i.value || !i.value.trim()) return i;
+    const parts = i.value.split(' / ');
+    let message = i.message;
+    for (const p of parts) if (p.trim().length >= 2) message = message.split(p).join(maskValue(p));
+    return { ...i, value: parts.map((p) => (p.trim() ? maskValue(p) : p)).join(' / '), message };
+  });
 }
 
 function checkCell(
@@ -631,3 +756,25 @@ function buildResult(
 }
 
 export { columnLetter };
+
+/**
+ * Values of the given columns from a file (used to remember e.g. placed debt IDs
+ * for later cross-file checks). Honours header row, data start row and column order.
+ */
+export function extractColumnValues(bytes: Uint8Array, def: FileTypeDefinition, keys: string[]): Record<string, string[]> {
+  const isZip = bytes.length > 4 && bytes[0] === 0x50 && bytes[1] === 0x4b;
+  const table = isZip ? tableFromXlsx(bytes, def) : tableFromCsv(decodeCsv(bytes, def).text, def);
+  const hr = def.headerRow ?? 1;
+  const start = def.dataStartRow ?? hr + 1;
+  const header = table.rows[table.lineNumbers.indexOf(hr)] ?? [];
+  const eq = (a: string, b: string) => normalizeHeader(a) === normalizeHeader(b);
+  const out: Record<string, string[]> = {};
+  for (const key of keys) {
+    const defIdx = def.columns.findIndex((c) => c.key === key);
+    if (defIdx < 0) continue;
+    const idx = def.enforceColumnOrder === false ? header.findIndex((h) => eq(h, def.columns[defIdx].header)) : defIdx;
+    if (idx < 0) continue;
+    out[key] = table.rows.filter((_, i) => table.lineNumbers[i] >= start).map((r) => (r[idx] ?? '').trim()).filter(Boolean);
+  }
+  return out;
+}

@@ -1,4 +1,4 @@
-import { GetObjectCommand, NoSuchKey, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, NoSuchKey, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { BlobStore } from './types';
 
@@ -27,6 +27,10 @@ export class S3BlobStore implements BlobStore {
       if (e instanceof NoSuchKey || (e as { name?: string }).name === 'NoSuchKey') return undefined;
       throw e;
     }
+  }
+
+  async delete(key: string) {
+    await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }
 
   signedUploadUrl(key: string, contentType: string) {

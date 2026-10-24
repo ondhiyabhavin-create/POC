@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import type { FileTypeDefinition } from '@odr/shared';
+import { DeleteFileTypeDialog } from '../../components/DeleteFileTypeDialog';
 import { api } from '../../api';
 import { ErrorAlert, fmtDateTime, Loading, useAsync } from '../../components/ui';
 
 export function RulesPage() {
-  const { data, error, loading } = useAsync(() => api.fileTypes(), []);
+  const { data, error, loading, reload } = useAsync(() => api.fileTypes(), []);
+  const [deleting, setDeleting] = useState<FileTypeDefinition | null>(null);
   const navigate = useNavigate();
   if (loading) return <Loading />;
   if (error || !data) return <ErrorAlert error={error} />;
@@ -35,6 +39,7 @@ export function RulesPage() {
               <th>Version</th>
               <th>Last changed</th>
               <th>Status</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -56,11 +61,32 @@ export function RulesPage() {
                   <div className="muted">{f.updatedBy}</div>
                 </td>
                 <td>{f.active ? <span className="badge ok">Active</span> : <span className="badge neutral">Inactive</span>}</td>
+                <td>
+                  <div className="row" style={{ gap: 4, flexWrap: 'nowrap' }}>
+                    <Link className="btn small" to={`/admin/rules/${f.id}`}>
+                      Edit
+                    </Link>
+                    <button className="btn small danger" onClick={() => setDeleting(f)} aria-label={`Delete ${f.name}`}>
+                      Delete
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      {deleting && (
+        <DeleteFileTypeDialog
+          def={deleting}
+          allTypes={data}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => {
+            setDeleting(null);
+            void reload();
+          }}
+        />
+      )}
     </>
   );
 }

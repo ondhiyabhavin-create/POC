@@ -87,7 +87,7 @@ const httpApi = {
   fileType: (id: string) => request<FileTypeDefinition>('GET', `/api/file-types/${encodeURIComponent(id)}`),
   saveFileType: (def: FileTypeDefinition, create = false) =>
     request<FileTypeDefinition>('PUT', `/api/file-types/${encodeURIComponent(def.id)}${create ? '?create=1' : ''}`, def),
-  deleteFileType: (id: string) => request<{ deleted: string }>('DELETE', `/api/file-types/${encodeURIComponent(id)}`),
+  deleteFileType: (id: string, cascade = false) => request<{ deleted: string }>('DELETE', `/api/file-types/${encodeURIComponent(id)}${cascade ? '?cascade=1' : ''}`),
 
   lookups: () => request<LookupList[]>('GET', '/api/lookups'),
   saveLookup: (l: LookupList) => request<LookupList>('PUT', `/api/lookups/${encodeURIComponent(l.id)}`, l),

@@ -109,7 +109,7 @@ function LayoutDetail({ def, lookups }: { def: FileTypeDefinition; lookups: Look
       </div>
       <div className="card tight">
         <div className="table-wrap">
-          <table>
+          <table className="cols-table">
             <thead>
               <tr>
                 <th>Col</th>

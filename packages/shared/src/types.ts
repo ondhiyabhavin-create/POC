@@ -44,6 +44,8 @@ export interface ColumnDefinition {
   fixedValue?: string;
   /** Value must equal the submitting organization's attribute with this key (exact, incl. spaces). */
   orgValue?: string;
+  /** Sensitive value (e.g. SSN/FEIN): masked in reports when the file type's maskSensitive is on. */
+  sensitive?: boolean;
   /** Values that are always accepted regardless of other checks (e.g. "9999-12-31"). */
   alwaysAllow?: string[];
   /** Extra guidance appended to messages for this column. */
@@ -216,6 +218,18 @@ export type FileRule =
       severity: Severity;
     };
 
+export interface CsvOptions {
+  /** Field separator: "," ";" "\t" "|" or any single character. */
+  delimiter: string;
+  /** utf-8 = BOM optional, utf-8-no-bom, utf-8-bom = BOM required, windows-1252 = legacy ANSI. */
+  encoding: 'utf-8' | 'utf-8-no-bom' | 'utf-8-bom' | 'windows-1252';
+  /** Quote character used to wrap values that contain the delimiter; "none" = quotes are literal text. */
+  quote: '"' | "'" | 'none';
+  lineEnding: 'any' | 'crlf' | 'lf';
+}
+
+export const DEFAULT_CSV_OPTIONS: CsvOptions = { delimiter: ',', encoding: 'utf-8', quote: '"', lineEnding: 'any' };
+
 export interface FileTypeDefinition {
   /** Short code, e.g. "PLC". Usable in file names via {TYPE}. */
   id: string;
@@ -223,6 +237,24 @@ export interface FileTypeDefinition {
   description?: string;
   /** Inactive types are hidden from submitters. */
   active: boolean;
+  /** Accepted file formats (default: both). */
+  formats?: { csv: boolean; xlsx: boolean };
+  /** How CSV files must be written (default: comma, UTF-8, double quotes, any line ending). */
+  csv?: CsvOptions;
+  /** Minimum number of data records (default 1). */
+  minRecords?: number;
+  /** Maximum number of data records (blank = no limit). */
+  maxRecords?: number;
+  /** Row that holds the column headers (default 1). */
+  headerRow?: number;
+  /** First row of data (default headerRow + 1). Rows in between are ignored. */
+  dataStartRow?: number;
+  /** Columns must appear in the defined order (default true). If false they are matched by header name. */
+  enforceColumnOrder?: boolean;
+  /** Keep the uploaded file after validation (default true). */
+  storeSourceFile?: boolean;
+  /** Mask sensitive values (SSN/FEIN…) in error messages and reports (default false). */
+  maskSensitive?: boolean;
   columns: ColumnDefinition[];
   rowRules: RowRule[];
   fileRules: FileRule[];
@@ -230,8 +262,9 @@ export interface FileTypeDefinition {
   headerMatch: 'strict' | 'relaxed';
   /**
    * File naming convention checked by the `fileName` rule.
-   * Tokens: {ORG} {TYPE} {YYYYMMDD} {ANY}. Example: "{ORG}_{TYPE}_{YYYYMMDD}.csv".
-   * A ".csv" pattern also accepts the same name ending in ".xlsx".
+   * Tokens: {ORG} {TYPE} {YYYYMMDD} {YYMMDD} {MMDDYYYY} {XXXX} (that many letters/digits)
+   * {####} (that many digits) {ANY}. Example: "{ORG}_{TYPE}_{YYYYMMDD}.csv".
+   * The extension may be any of the accepted formats.
    */
   fileNamePattern?: string;
   version: number;

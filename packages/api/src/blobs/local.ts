@@ -37,6 +37,10 @@ export class LocalBlobStore implements BlobStore {
     }
   }
 
+  async delete(key: string) {
+    await fs.rm(this.resolve(key), { force: true });
+  }
+
   sign(method: string, key: string, expires: number, name = '') {
     return crypto.createHmac('sha256', this.secret).update(`${method}\n${key}\n${expires}\n${name}`).digest('hex');
   }

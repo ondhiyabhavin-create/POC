@@ -1,5 +1,5 @@
 import { checkFileTypeDefinition, columnLetter, type FileTypeDefinition, type LookupList, type Organization } from '@odr/shared';
-import { badRequest, forbidden, notFound, requireAdmin, requireUser, type Route } from '../http';
+import { HttpError, badRequest, forbidden, notFound, requireAdmin, requireUser, type Route } from '../http';
 import { services } from '../services';
 
 const now = () => new Date().toISOString();
@@ -56,13 +56,21 @@ export const configRoutes: Route[] = [
     method: 'DELETE',
     pattern: '/api/file-types/:id',
     handler: async (req) => {
-      requireAdmin(req);
+      const user = requireAdmin(req);
       const { store } = services();
       const all = await store.listFileTypes();
-      const users = all.filter((f) => f.id !== req.params.id && f.fileRules.some((r) => r.type === 'existsInPrior' && r.sourceFileTypeId === req.params.id));
-      if (users.length) throw badRequest(`Cannot delete: ${users.map((u) => u.name).join(', ')} check values against this file type. Remove those rules first.`);
+      if (!all.some((f) => f.id === req.params.id)) throw notFound('File type not found.');
+      const refersTo = (r: FileTypeDefinition['fileRules'][number]) => r.type === 'existsInPrior' && r.sourceFileTypeId === req.params.id;
+      const users = all.filter((f) => f.id !== req.params.id && f.fileRules.some(refersTo));
+      if (users.length && req.query.cascade !== '1') {
+        throw new HttpError(409, `${users.map((u) => u.name).join(', ')} check values against this file type.`, { referencedBy: users.map((u) => ({ id: u.id, name: u.name })) });
+      }
+      // Cascade: remove the rules that point at the deleted type.
+      for (const u of users) {
+        await store.putFileType({ ...u, fileRules: u.fileRules.filter((r) => !refersTo(r)), version: u.version + 1, updatedAt: now(), updatedBy: user.email });
+      }
       await store.deleteFileType(req.params.id);
-      return { deleted: req.params.id };
+      return { deleted: req.params.id, updated: users.map((u) => u.id) };
     },
   },
   {

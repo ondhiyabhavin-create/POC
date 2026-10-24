@@ -4,10 +4,8 @@ import {
   DEFAULT_FILE_NAME_PATTERN,
   checkFileTypeDefinition,
   columnLetter,
-  isXlsx,
-  tableFromCsv,
-  tableFromXlsx,
-  validateTable,
+  isSensitiveColumn,
+  validateBytes,
   type Organization,
   type ColumnCheck,
   type ColumnDefinition,
@@ -22,7 +20,9 @@ import {
 } from '@odr/shared';
 import { api } from '../../api';
 import { ConditionalRuleModal, newConditionalRule, type ConditionalRule } from '../../components/ConditionBuilder';
+import { DeleteFileTypeDialog } from '../../components/DeleteFileTypeDialog';
 import { ImportModal } from '../../components/ImportModal';
+import { TemplateSettings } from '../../components/TemplateSettings';
 import { ErrorAlert, Loading, Modal, Spinner, StatusBadge, SummaryStats, useAsync } from '../../components/ui';
 import { columnRules, ruleText } from '../LayoutsPage';
 
@@ -105,6 +105,7 @@ export function RuleEditorPage() {
   );
   const [importOpen, setImportOpen] = useState(isNew && params.get('import') === '1');
   const [editCond, setEditCond] = useState<{ index: number; rule: ConditionalRule } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [def, setDef] = useState<FileTypeDefinition>();
   const [tab, setTab] = useState<'columns' | 'row' | 'file' | 'test'>('columns');
   const [dirty, setDirty] = useState(false);
@@ -160,16 +161,6 @@ export function RuleEditorPage() {
     }
   };
 
-  const remove = async () => {
-    if (!confirm(`Delete the ${def.name} file type? Past submissions are kept, but no new files can be validated against it.`)) return;
-    try {
-      await api.deleteFileType(def.id);
-      navigate('/admin/rules', { replace: true });
-    } catch (e) {
-      setSaveError(e);
-    }
-  };
-
   const move = (i: number, d: -1 | 1) => {
     const cols = [...def.columns];
     const j = i + d;
@@ -190,7 +181,7 @@ export function RuleEditorPage() {
         </div>
         <div className="row">
           {!isNew && (
-            <button className="btn danger" onClick={remove}>
+            <button className="btn danger" onClick={() => setDeleting(true)}>
               Delete
             </button>
           )}
@@ -214,56 +205,7 @@ export function RuleEditorPage() {
         </div>
       )}
 
-      <div className="card">
-        <div className="form-grid">
-          <label className="field">
-            File type code
-            <span className="hint">Short unique code, used for {'{TYPE}'} in file names</span>
-            <input value={def.id} disabled={!isNew} maxLength={10} onChange={(e) => update({ id: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} />
-          </label>
-          <label className="field">
-            Name
-            <span className="hint">Shown to submitters</span>
-            <input value={def.name} onChange={(e) => update({ name: e.target.value })} />
-          </label>
-          <label className="field">
-            Header matching
-            <span className="hint">Relaxed ignores capitalization, spaces and punctuation</span>
-            <select value={def.headerMatch} onChange={(e) => update({ headerMatch: e.target.value as 'strict' | 'relaxed' })}>
-              <option value="relaxed">Relaxed</option>
-              <option value="strict">Strict (exact text)</option>
-            </select>
-          </label>
-          <label className="field">
-            Availability
-            <span className="hint">Inactive types are hidden from submitters</span>
-            <select value={def.active ? 'yes' : 'no'} onChange={(e) => update({ active: e.target.value === 'yes' })}>
-              <option value="yes">Active</option>
-              <option value="no">Inactive</option>
-            </select>
-          </label>
-        </div>
-        <div className="form-grid" style={{ marginTop: 14 }}>
-          <label className="field">
-            File naming convention
-            <span className="hint">
-              Tokens: {'{ORG}'} organization code · {'{TYPE}'} file type code · {'{YYYYMMDD}'} date · {'{ANY}'} anything. “.csv” also accepts “.xlsx”.
-            </span>
-            <input className="mono" value={def.fileNamePattern ?? ''} placeholder={DEFAULT_FILE_NAME_PATTERN} onChange={(e) => update({ fileNamePattern: e.target.value })} />
-          </label>
-          <div className="field">
-            Example
-            <span className="hint">What a valid file name looks like</span>
-            <code className="example-name">
-              {(def.fileNamePattern || DEFAULT_FILE_NAME_PATTERN).replace('{ORG}', orgs[0]?.code ?? 'ORG').replace('{TYPE}', def.id || 'CODE').replace('{YYYYMMDD}', '20261024').replace('{ANY}', 'anything')}
-            </code>
-          </div>
-        </div>
-        <label className="field" style={{ marginTop: 14 }}>
-          Description
-          <textarea rows={2} value={def.description ?? ''} onChange={(e) => update({ description: e.target.value })} />
-        </label>
-      </div>
+      <TemplateSettings def={def} update={update} isNew={isNew} orgs={orgs} onImport={() => setImportOpen(true)} onTest={() => setTab('test')} />
 
       <div className="tabs">
         <button className={tab === 'columns' ? 'active' : ''} onClick={() => setTab('columns')}>
@@ -276,7 +218,7 @@ export function RuleEditorPage() {
           File rules ({def.fileRules.length})
         </button>
         <button className={tab === 'test' ? 'active' : ''} onClick={() => setTab('test')}>
-          🧪 Test rules
+          🧪 Validate sample file
         </button>
       </div>
 
@@ -298,7 +240,7 @@ export function RuleEditorPage() {
             </button>
           </div>
           <div className="table-wrap">
-            <table>
+            <table className="cols-table">
               <thead>
                 <tr>
                   <th>Col</th>
@@ -413,9 +355,11 @@ export function RuleEditorPage() {
 
       {tab === 'test' && <TestPanel def={def} lookups={lookups} orgs={orgs} />}
 
+      {deleting && <DeleteFileTypeDialog def={def} allTypes={allTypes} onClose={() => setDeleting(false)} onDeleted={() => navigate('/admin/rules', { replace: true })} />}
       {importOpen && (
         <ImportModal
           base={def}
+          options={{ headerRow: def.headerRow, dataStartRow: def.dataStartRow }}
           lookups={lookups}
           onClose={() => setImportOpen(false)}
           onApply={(next) => {
@@ -685,6 +629,14 @@ function ColumnModal({
           <select value={c.required ? 'R' : 'O'} onChange={(e) => set({ required: e.target.value === 'R' })}>
             <option value="R">Required — blank is an error</option>
             <option value="O">Optional — blank passes</option>
+          </select>
+        </label>
+        <label className="field">
+          Sensitive (SSN, FEIN…)
+          <span className="hint">Masked in reports when masking is on</span>
+          <select value={(c.sensitive ?? isSensitiveColumn(c)) ? 'y' : 'n'} onChange={(e) => set({ sensitive: e.target.value === 'y' })}>
+            <option value="n">No</option>
+            <option value="y">Yes — mask in reports</option>
           </select>
         </label>
         {c.dataType === 'money' && (
@@ -1065,8 +1017,7 @@ function TestPanel({ def, lookups, orgs }: { def: FileTypeDefinition; lookups: L
     try {
       const fileType = { ...def, columns: relabel(def.columns) };
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const table = isXlsx(bytes) ? tableFromXlsx(bytes, fileType) : tableFromCsv(new TextDecoder().decode(bytes));
-      const res = validateTable(table, {
+      const res = validateBytes(bytes, {
         fileType,
         organization: org,
         lookups: Object.fromEntries(lookups.map((l) => [l.id, l])),

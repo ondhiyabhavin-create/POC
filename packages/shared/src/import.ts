@@ -13,10 +13,10 @@
  *
  * Everything returned is a *suggestion* for the admin to review.
  */
-import { columnLetter, parseCsv } from './csv';
+import { DELIMITER_LABEL, columnLetter, detectDelimiter, parseCsv } from './csv';
 import { isIsoDate } from './expression';
-import type { ColumnDefinition, DataType, FileTypeDefinition, LookupList, RowRule } from './types';
-import { normalizeHeader } from './validator';
+import type { ColumnDefinition, CsvOptions, DataType, FileTypeDefinition, LookupList, RowRule } from './types';
+import { isSensitiveColumn, normalizeHeader } from './validator';
 import type { XlsxSheet } from './xlsx';
 
 export interface ProposedColumn extends ColumnDefinition {
@@ -31,7 +31,7 @@ export interface ImportResult {
   sourceSheet: string;
   columns: ProposedColumn[];
   rowRules: RowRule[];
-  meta: { id?: string; name?: string; description?: string; fileNamePattern?: string };
+  meta: { id?: string; name?: string; description?: string; fileNamePattern?: string; csv?: CsvOptions; formats?: { csv: boolean; xlsx: boolean } };
   notes: string[];
   rowsAnalyzed?: number;
 }
@@ -69,20 +69,34 @@ const smartQuotes = (s: string) => s.replace(/[“”„]/g, '"').replace(/[‘�
 // Entry points
 // ---------------------------------------------------------------------------
 
-export function analyzeWorkbook(sheets: XlsxSheet[], lookups: LookupList[] = []): ImportResult {
+export interface ImportOptions {
+  /** Row holding the headers in a sample data file (default 1). */
+  headerRow?: number;
+  /** Row where sample data starts (default headerRow + 1). */
+  dataStartRow?: number;
+}
+
+export function analyzeWorkbook(sheets: XlsxSheet[], lookups: LookupList[] = [], opts: ImportOptions = {}): ImportResult {
   for (const sheet of sheets) {
     const spec = findSpecHeader(sheet);
     if (spec) return analyzeSpec(sheet, spec, sheets, lookups);
   }
   const data = sheets.filter((s) => s.rows.length > 0).sort((a, b) => b.rows.length - a.rows.length)[0];
   if (!data) throw new Error('The workbook is empty.');
-  return analyzeData(data);
+  const res = analyzeData(data, opts);
+  res.meta.formats = { csv: true, xlsx: true };
+  return res;
 }
 
-export function analyzeCsvText(text: string, name = 'CSV'): ImportResult {
-  const parsed = parseCsv(text);
+export function analyzeCsvText(text: string, name = 'CSV', opts: ImportOptions = {}): ImportResult {
+  const delimiter = detectDelimiter(text);
+  const parsed = parseCsv(text, { delimiter });
   if (parsed.rows.length === 0) throw new Error('The file is empty.');
-  return analyzeData({ name, rows: parsed.rows, rowNumbers: parsed.lineNumbers });
+  const res = analyzeData({ name, rows: parsed.rows, rowNumbers: parsed.rows.map((_, i) => i + 1) }, opts);
+  const le = parsed.lineEndings;
+  res.meta.csv = { delimiter, encoding: parsed.hadBom ? 'utf-8-bom' : 'utf-8', quote: '"', lineEnding: le.crlf && !le.lf ? 'crlf' : le.lf && !le.crlf ? 'lf' : 'any' };
+  if (delimiter !== ',') res.notes.unshift(`Detected ${DELIMITER_LABEL[delimiter] ?? `"${delimiter}"`} as the delimiter.`);
+  return res;
 }
 
 /** Turn an import into a FileTypeDefinition draft (columns re-lettered). */
@@ -103,6 +117,7 @@ export function importToDefinition(base: FileTypeDefinition, result: ImportResul
     name: base.name || result.meta.name || '',
     description: base.description || result.meta.description,
     fileNamePattern: base.fileNamePattern || result.meta.fileNamePattern,
+    csv: base.columns.length === 0 && result.meta.csv ? result.meta.csv : base.csv,
     columns,
     rowRules,
   };
@@ -298,6 +313,7 @@ function analyzeSpec(sheet: Table, h: SpecHeader, all: XlsxSheet[], lookups: Loo
     if (same) colNotes.push(`Must equal column ${same[1].toUpperCase()} — rule added.`);
 
     if (dataType === 'date') colNotes.push('Date in CCYY-MM-DD.');
+    if (isSensitiveColumn(col)) col.sensitive = true;
     return col;
   });
 
@@ -430,12 +446,16 @@ function extractMeta(sheets: XlsxSheet[]): ImportResult['meta'] {
 // Sample data
 // ---------------------------------------------------------------------------
 
-function analyzeData(t: Table): ImportResult {
+function analyzeData(t: Table, opts: ImportOptions = {}): ImportResult {
   const notes: string[] = [];
-  const headerRow = t.rows[0].map((c) => cleanHeader(c));
+  const hr = opts.headerRow ?? 1;
+  const hIdx = t.rowNumbers.indexOf(hr);
+  if (hIdx < 0) throw new Error(`Row ${hr} (the header row set for this file type) is empty in "${t.name}".`);
+  const headerRow = t.rows[hIdx].map((c) => cleanHeader(c));
   while (headerRow.length && headerRow[headerRow.length - 1] === '') headerRow.pop();
   if (headerRow.length === 0) throw new Error('The first row is empty — it must contain the column headers.');
-  const data = t.rows.slice(1, 5001);
+  const start = opts.dataStartRow ?? hr + 1;
+  const data = t.rows.filter((_, i) => t.rowNumbers[i] >= start).slice(0, 5000);
   if (headerRow.filter((h) => /^-?\d+(\.\d+)?$/.test(h) || isIsoDate(h)).length > headerRow.length / 2) {
     notes.push('The first row looks like data rather than headers — check the header names.');
   }
@@ -448,6 +468,10 @@ function analyzeData(t: Table): ImportResult {
     const colNotes: string[] = [];
     const col: ProposedColumn = { key: toKey(name), letter: columnLetter(i), header: name, dataType: 'varchar', required: false, notes: colNotes };
     if (!header) colNotes.push('Header was blank — please name this column.');
+    if (isSensitiveColumn(col)) {
+      col.sensitive = true;
+      colNotes.push('Looks sensitive (SSN/FEIN) — can be masked in reports.');
+    }
     if (filled.length === 0) {
       if (data.length) colNotes.push('No sample values — treated as optional text.');
       return col;

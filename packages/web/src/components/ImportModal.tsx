@@ -6,6 +6,7 @@ import {
   isXlsx,
   readXlsx,
   type FileTypeDefinition,
+  type ImportOptions,
   type ImportResult,
   type LookupList,
 } from '@odr/shared';
@@ -18,7 +19,7 @@ const TYPE_LABEL: Record<string, string> = { varchar: 'Text', numeric: 'Digits',
  * Upload a layout spreadsheet (e.g. ODR Attachment D) or a sample data file and
  * turn it into columns + rules. Runs entirely in the browser.
  */
-export function ImportModal({ base, lookups, onApply, onClose }: { base: FileTypeDefinition; lookups: LookupList[]; onApply: (def: FileTypeDefinition) => void; onClose: () => void }) {
+export function ImportModal({ base, lookups, options = {}, onApply, onClose }: { base: FileTypeDefinition; lookups: LookupList[]; options?: ImportOptions; onApply: (def: FileTypeDefinition) => void; onClose: () => void }) {
   const [result, setResult] = useState<ImportResult>();
   const [fileName, setFileName] = useState('');
   const [include, setInclude] = useState<boolean[]>([]);
@@ -37,7 +38,7 @@ export function ImportModal({ base, lookups, onApply, onClose }: { base: FileTyp
     setResult(undefined);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const res = isXlsx(bytes) ? analyzeWorkbook(readXlsx(bytes), lookups) : analyzeCsvText(new TextDecoder().decode(bytes), file.name);
+      const res = isXlsx(bytes) ? analyzeWorkbook(readXlsx(bytes), lookups, options) : analyzeCsvText(new TextDecoder().decode(bytes), file.name, options);
       setResult(res);
       setFileName(file.name);
       setInclude(res.columns.map(() => true));

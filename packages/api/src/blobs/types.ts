@@ -5,6 +5,7 @@ export interface BlobStore {
   get(key: string): Promise<{ body: Buffer; size: number } | undefined>;
   /** URL the browser can PUT the raw file to. */
   signedUploadUrl(key: string, contentType: string): Promise<string>;
+  delete(key: string): Promise<void>;
   /** Short-lived URL the browser can GET to download the object. */
   signedDownloadUrl(key: string, downloadName: string): Promise<string>;
 }

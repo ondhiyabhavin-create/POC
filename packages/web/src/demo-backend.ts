@@ -10,9 +10,7 @@ import {
   buildErrorReportCsv,
   checkFileTypeDefinition,
   columnLetter,
-  isXlsx,
-  tableFromCsv,
-  tableFromXlsx,
+  extractColumnValues,
   validateBytes,
   type FileTypeDefinition,
   type LookupList,
@@ -151,10 +149,13 @@ export const demoApi = {
     save();
     return delay(structuredClone(def));
   },
-  async deleteFileType(id: string) {
-    admin();
-    const users = Object.values(db.fileTypes).filter((f) => f.id !== id && f.fileRules.some((r) => r.type === 'existsInPrior' && r.sourceFileTypeId === id));
-    if (users.length) throw new DemoError(400, `Cannot delete: ${users.map((x) => x.name).join(', ')} check values against this file type. Remove those rules first.`);
+  async deleteFileType(id: string, cascade = false) {
+    const u = admin();
+    if (!db.fileTypes[id]) throw new DemoError(404, 'File type not found.');
+    const refers = (r: FileTypeDefinition['fileRules'][number]) => r.type === 'existsInPrior' && r.sourceFileTypeId === id;
+    const users = Object.values(db.fileTypes).filter((f) => f.id !== id && f.fileRules.some(refers));
+    if (users.length && !cascade) throw new DemoError(409, `${users.map((x) => x.name).join(', ')} check values against this file type.`);
+    for (const f of users) db.fileTypes[f.id] = { ...f, fileRules: f.fileRules.filter((r) => !refers(r)), version: f.version + 1, updatedAt: new Date().toISOString(), updatedBy: u.email };
     delete db.fileTypes[id];
     save();
     return delay({ deleted: id });
@@ -223,7 +224,7 @@ export const demoApi = {
   async fileUrl(id: string) {
     const s = ownSub(id);
     const blob = files.get(s.id);
-    if (!blob) throw new DemoError(404, 'In the browser demo, original files are only kept until the page is reloaded.');
+    if (!blob) throw new DemoError(404, db.fileTypes[s.fileTypeId]?.storeSourceFile === false ? 'The source file was not stored — this file type is set not to keep uploaded files.' : 'In the browser demo, original files are only kept until the page is reloaded.');
     return { url: URL.createObjectURL(blob), name: s.fileName };
   },
   async setStatus(id: string, status: SubmissionReviewStatus, note?: string) {
@@ -326,18 +327,15 @@ export const demoApi = {
       reviewStatus: failed ? 'rejected' : 'validated',
       reviewHistory: [{ status: failed ? 'rejected' : 'validated', at, by: 'system', note: 'Automated validation' }],
     };
-    files.set(id, file);
+    if (fileType.storeSourceFile !== false) files.set(id, file);
 
     if (!failed) {
       const cols = new Set<string>();
       for (const t of Object.values(db.fileTypes)) for (const r of t.fileRules) if (r.type === 'existsInPrior' && r.sourceFileTypeId === fileType.id) cols.add(r.sourceColumn);
       if (cols.size) {
-        const table = isXlsx(bytes) ? tableFromXlsx(bytes, fileType) : tableFromCsv(new TextDecoder().decode(bytes));
-        for (const key of cols) {
-          const idx = fileType.columns.findIndex((c) => c.key === key);
-          if (idx < 0) continue;
+        for (const [key, vals] of Object.entries(extractColumnValues(bytes, fileType, [...cols]))) {
           const sc = scope(organization?.id, fileType.id, key);
-          db.index[sc] = [...new Set([...(db.index[sc] ?? []), ...table.rows.slice(1).map((r) => (r[idx] ?? '').trim()).filter(Boolean)])];
+          db.index[sc] = [...new Set([...(db.index[sc] ?? []), ...vals])];
         }
       }
     }

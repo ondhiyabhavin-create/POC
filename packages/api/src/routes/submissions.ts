@@ -1,8 +1,7 @@
 import crypto from 'node:crypto';
 import {
   buildErrorReportCsv,
-  tableFromCsv,
-  tableFromXlsx,
+  extractColumnValues,
   validateBytes,
   type FileTypeDefinition,
   type Organization,
@@ -133,7 +132,7 @@ export const submissionRoutes: Route[] = [
         fileTypeId: fileType.id,
         fileTypeName: fileType.name,
         fileName: input.fileName,
-        fileKey: input.key,
+        fileKey: fileType.storeSourceFile === false ? '' : input.key,
         reportKey,
         submittedAt,
         submittedBy: user.email,
@@ -150,14 +149,12 @@ export const submissionRoutes: Route[] = [
       if (!failed) {
         const cols = indexedColumns(fileType, allTypes);
         if (cols.length) {
-          const table = /\.xlsx$/i.test(input.fileName) ? tableFromXlsx(bytes, fileType) : tableFromCsv(Buffer.from(bytes).toString('utf8'));
-          for (const key of cols) {
-            const idx = fileType.columns.findIndex((c) => c.key === key);
-            const values = table.rows.slice(1).map((r) => (r[idx] ?? '').trim()).filter(Boolean);
-            await store.addIndexValues(indexScope(organization?.id, fileType.id, key), values);
-          }
+          const values = extractColumnValues(bytes, fileType, cols);
+          for (const [key, vals] of Object.entries(values)) await store.addIndexValues(indexScope(organization?.id, fileType.id, key), vals);
         }
       }
+      // Template setting: don't keep the source file.
+      if (fileType.storeSourceFile === false) await blobs.delete(input.key);
       return submission;
     },
   },
@@ -216,6 +213,7 @@ export const submissionRoutes: Route[] = [
     pattern: '/api/submissions/:id/file',
     handler: async (req) => {
       const { sub } = await loadOwnSubmission(req);
+      if (!sub.fileKey) throw notFound('The source file was not stored — this file type is set not to keep uploaded files.');
       return { url: await services().blobs.signedDownloadUrl(sub.fileKey, sub.fileName) };
     },
   },
