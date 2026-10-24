@@ -1,0 +1,16 @@
+node_modules/
+dist/
+cdk.out/
+packages/api/.data/
+.env
+.env.local
+*.log
+.DS_Store
+
+# Client documents — never publish (repo is public)
+*.docx
+*.doc
+*.zip
+*.pdf
+~$*
+Attachment*.xlsx

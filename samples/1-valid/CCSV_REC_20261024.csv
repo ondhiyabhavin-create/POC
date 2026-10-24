@@ -1,0 +1,9 @@
+Agency Name,Agency Debt ID,Debtor Type,SSN,FEIN,Business Name,Last Name,First Name,Recall Date,Recall Reason Code
+City Court of Somewhereville,CCSV00100000,I,908002616,,,LANDRY,DAVID,2026-10-20,Closed - Recall - SIF
+City Court of Somewhereville,CCSV00100001,I,937696327,,,LANDRY,MARY,2026-10-20,Closed - Recall - Error
+City Court of Somewhereville,CCSV00100002,I,997766985,,,BROWN,ROBERT,2026-10-20,Closed - Recall - Deceased
+City Court of Somewhereville,CCSV00100003,I,907672031,,,FONTENOT,MICHAEL,2026-10-20,Closed - Recall - Incarcerated
+City Court of Somewhereville,CCSV00100004,B,,004281910,Pelican Lawn Care,,,2026-10-20,Closed - Recall - Military
+City Court of Somewhereville,CCSV00100005,I,916017324,,,JOHNSON,DAVID,2026-10-20,Closed - Recall - Write Off
+City Court of Somewhereville,CCSV00100006,I,930785720,,,LANDRY,JAMES,2026-10-20,Closed - Recall - Incarcerated
+City Court of Somewhereville,CCSV00100007,I,988440825,,,LEBLANC,DAVID,2026-10-20,Closed - Recall - Error

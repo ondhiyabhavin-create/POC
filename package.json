@@ -1,0 +1,30 @@
+{
+  "name": "odr-file-intake-poc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ODR File Intake pre-submission validation POC (Placement + Recall)",
+  "workspaces": [
+    "packages/shared",
+    "packages/api",
+    "packages/web",
+    "infra"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @odr/api\" \"npm run dev -w @odr/web\"",
+    "test": "npm run test -w @odr/shared",
+    "typecheck": "tsc -p packages/shared && tsc -p packages/api && tsc -p packages/web && tsc -p infra",
+    "samples": "tsx scripts/generate-samples.ts",
+    "reset-data": "rm -rf packages/api/.data",
+    "build:web": "npm run build -w @odr/web",
+    "cdk": "npm run cdk -w @odr/infra --",
+    "deploy": "npm run build:web && npm run cdk -- deploy",
+    "synth": "npm run build:web && npm run cdk -- synth"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "concurrently": "^10.0.6",
+    "fflate": "^0.8.3",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@odr/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=.env src/local/server.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1156.0",
+    "@aws-sdk/client-s3": "^3.1156.0",
+    "@aws-sdk/lib-dynamodb": "^3.1156.0",
+    "@aws-sdk/s3-request-presigner": "^3.1156.0",
+    "@odr/shared": "*",
+    "aws-jwt-verify": "^5.2.1",
+    "jose": "^6.2.13",
+    "papaparse": "^5.7.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.164",
+    "@types/papaparse": "^5.5.2"
+  }
+}

@@ -1,0 +1,9 @@
+Agency Name,Agency Debt ID,SSN,FEIN,Business Name,Last Name,First Name,Adjustment Date,Adjustment Amount,Adjustment Activity Code,Adjustment Line Item
+City Court of Somewhereville,CCSV00100008,997208708,,,BOUDREAUX,ODETTE,2026-10-21,12.73,Agency Increase,Penalty
+City Court of Somewhereville,CCSV00100009,931491652,,,JOHNSON,LINDA,2026-10-21,-157.60,Agency Decrease,Penalty
+City Court of Somewhereville,CCSV00100010,962866585,,,SMITH,MICHAEL,2026-10-21,-37.36,Agency Decrease,Interest
+City Court of Somewhereville,CCSV00100011,,009823641,Acme Crawfish LLC,,,2026-10-21,43.98,Agency Increase,Principal
+City Court of Somewhereville,CCSV00100012,941725472,,,GUIDRY,JENNIFER,2026-10-21,100.34,Agency Increase,ODR Fee
+City Court of Somewhereville,CCSV00100013,900280528,,,JOHNSON,ROBERT,2026-10-21,69.72,Agency Increase,ODR Fee
+City Court of Somewhereville,CCSV00100014,974408842,,,WILLIAMS,MARY,2026-10-21,-139.42,Agency Decrease,Penalty
+City Court of Somewhereville,CCSV00100015,922667253,,,WILLIAMS,MARY,2026-10-21,112.98,Agency Increase,Principal

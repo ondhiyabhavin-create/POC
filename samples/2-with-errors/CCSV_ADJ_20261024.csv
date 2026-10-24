@@ -1,0 +1,7 @@
+Agency Name,Agency Debt ID,SSN,FEIN,Business Name,Last Name,First Name,Adjustment Date,Adjustment Amount,Adjustment Activity Code,Adjustment Line Item
+City Court of Somewhereville,CCSV00100000,908002616,,,LANDRY,DAVID,2026-10-21,25.00,Agency Decrease,Penalty
+City Court of Somewhereville,CCSV00100001,937696327,,,LANDRY,MARY,2026-10-21,"1,200.00",Agency Decrease,Penalty
+City Court of Somewhereville,CCSV00100002,997766985,,,BROWN,ROBERT,2026-10-21,-37.36,Agency Decrease,Fees
+City Court of Somewhereville,CCSV00100004,,004281910,Pelican Lawn Care,,,2026-10-21,100.34,Agency Increase,ODR Fee
+City Court of Somewhereville,CCSV00100004,,004281910,Pelican Lawn Care,,,2026-10-21,100.34,Agency Increase,ODR Fee
+City Court of Somewhereville,CCSV00100005,916017324,,,JOHNSON,DAVID,2026-10-21,69.72,Agency Increase,ODR Fee

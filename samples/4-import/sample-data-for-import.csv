@@ -1,0 +1,31 @@
+Agency Name,Agency Debt ID,SSN,FEIN,Business Name,Last Name,First Name,Adjustment Date,Adjustment Amount,Adjustment Activity Code,Adjustment Line Item
+City Court of Somewhereville,CCSV00100000,,004684876,Bayou Widgets Inc,,,2026-10-21,12.73,Agency Increase,Penalty
+City Court of Somewhereville,CCSV00100001,946374391,,,JOHNSON,ODETTE,2026-10-21,-157.60,Agency Decrease,Penalty
+City Court of Somewhereville,CCSV00100002,978372920,,,JOHNSON,ELIZABETH,2026-10-21,-37.36,Agency Decrease,Interest
+City Court of Somewhereville,CCSV00100003,988709859,,,LANDRY,LINDA,2026-10-21,43.98,Agency Increase,Principal
+City Court of Somewhereville,CCSV00100004,975120715,,,BROUSSARD,MARY,2026-10-21,100.34,Agency Increase,ODR Fee
+City Court of Somewhereville,CCSV00100005,966592109,,,BROWN,ROBERT,2026-10-21,69.72,Agency Increase,ODR Fee
+City Court of Somewhereville,CCSV00100006,,003288734,Delta Test Supplies,,,2026-10-21,-139.42,Agency Decrease,Penalty
+City Court of Somewhereville,CCSV00100007,907608456,,,BROWN,JAMES,2026-10-21,112.98,Agency Increase,Principal
+City Court of Somewhereville,CCSV00100008,988635359,,,LANDRY,JENNIFER,2026-10-21,67.07,Agency Increase,Fine
+City Court of Somewhereville,CCSV00100009,963515331,,,SMITH,ELIZABETH,2026-10-21,89.11,Agency Increase,ODR Fee
+City Court of Somewhereville,CCSV00100010,945209503,,,HEBERT,LINDA,2026-10-21,-78.58,Agency Decrease,ODR Fee
+City Court of Somewhereville,CCSV00100011,960481012,,,BOUDREAUX,JAMES,2026-10-21,-6.67,Agency Decrease,Penalty
+City Court of Somewhereville,CCSV00100012,,002004107,Magnolia Catering Co,,,2026-10-21,125.59,Agency Increase,ODR Fee
+City Court of Somewhereville,CCSV00100013,990021386,,,THIBODEAUX,BRIDNAY,2026-10-21,121.87,Agency Increase,Penalty
+City Court of Somewhereville,CCSV00100014,917278714,,,SMITH,PATRICIA,2026-10-21,-79.45,Agency Decrease,Penalty
+City Court of Somewhereville,CCSV00100015,907678431,,,WILLIAMS,MARY,2026-10-21,87.59,Agency Increase,Penalty
+City Court of Somewhereville,CCSV00100016,,002786788,Bayou Widgets Inc,,,2026-10-21,-119.17,Agency Decrease,ODR Fee
+City Court of Somewhereville,CCSV00100017,981255435,,,LANDRY,JAMES,2026-10-21,137.92,Agency Increase,Interest
+City Court of Somewhereville,CCSV00100018,986988901,,,HEBERT,LINDA,2026-10-21,144.96,Agency Increase,Penalty
+City Court of Somewhereville,CCSV00100019,932279113,,,WILLIAMS,TERRENCE,2026-10-21,181.14,Agency Increase,ODR Fee
+City Court of Somewhereville,CCSV00100020,945788180,,,HEBERT,ROBERT,2026-10-21,195.52,Agency Increase,ODR Fee
+City Court of Somewhereville,CCSV00100021,,003082643,Bayou Widgets Inc,,,2026-10-21,-18.23,Agency Decrease,Penalty
+City Court of Somewhereville,CCSV00100022,900910465,,,BROWN,PATRICIA,2026-10-21,73.96,Agency Increase,Penalty
+City Court of Somewhereville,CCSV00100023,990624284,,,FONTENOT,JENNIFER,2026-10-21,-97.65,Agency Decrease,Penalty
+City Court of Somewhereville,CCSV00100024,905574179,,,SMITH,TERRENCE,2026-10-21,83.22,Agency Increase,ODR Fee
+City Court of Somewhereville,CCSV00100025,927490825,,,LANDRY,LUCIEN,2026-10-21,-195.52,Agency Decrease,ODR Fee
+City Court of Somewhereville,CCSV00100026,998576833,,,BROUSSARD,LUCIEN,2026-10-21,158.99,Agency Increase,Principal
+City Court of Somewhereville,CCSV00100027,965585838,,,BROWN,ODETTE,2026-10-21,-35.93,Agency Decrease,ODR Fee
+City Court of Somewhereville,CCSV00100028,981719213,,,HEBERT,ELIZABETH,2026-10-21,129.23,Agency Increase,Fine
+City Court of Somewhereville,CCSV00100029,903501022,,,HEBERT,ELIZABETH,2026-10-21,201.06,Agency Increase,Penalty
